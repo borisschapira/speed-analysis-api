@@ -3,6 +3,8 @@
 A Node.js CLI tool to interact with the
 [Contentsquare Speed Analysis Lab API](https://docs.contentsquare.com/en/api/speed-analysis-lab/).
 
+![Screenshot of a terminal displaying all the options](/assets/capture.png)
+
 It provides six commands covering monitoring inspection, performance history,
 regression detection, period comparison, and performance budgets — with optional
 TSV export for every command.
