@@ -1,0 +1,11 @@
+{
+  "name": "speed-analysis-api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node monitoring-list.js"
+  },
+  "dependencies": {
+    "prompts": "^2.4.2"
+  }
+}
