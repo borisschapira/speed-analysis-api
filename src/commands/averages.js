@@ -108,7 +108,7 @@ export async function runAverages(baseURL, accessToken, outputFile = null) {
       baseURL,
       accessToken,
       m.id,
-      lastDays,
+      { lastDays, limit: 0, error: false },
     );
     process.stdout.write(`done (${reportCount} report(s))\n`);
     results.push({ monitoring: m, reportCount, statistics });

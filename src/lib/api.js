@@ -31,11 +31,26 @@ export async function getMonitoringList(baseURL, accessToken) {
   return payload.monitorings;
 }
 
+export async function getMonitoringLastReport(
+  baseURL,
+  accessToken,
+  monitoringId,
+) {
+  const payload = await apiPost(
+    baseURL,
+    accessToken,
+    "/v1/speed-analysis/monitoring/last-report",
+    { monitoringId, metricsOnly: true },
+  );
+  return payload ?? null;
+}
+
+// options: { lastDays?, dateFrom?, dateTo?, limit?, error? }
 export async function getMonitoringReports(
   baseURL,
   accessToken,
   monitoringId,
-  lastDays,
+  options = {},
 ) {
   const payload = await apiPost(
     baseURL,
@@ -43,14 +58,13 @@ export async function getMonitoringReports(
     "/v1/speed-analysis/monitoring/reports",
     {
       monitoringId,
-      lastDays,
-      limit: 0,
-      error: false,
+      ...options,
     },
   );
 
   return {
     reportCount: payload.monitoringData?.length ?? 0,
     statistics: payload.statistics ?? {},
+    monitoringData: payload.monitoringData ?? [], // exposed for budget-set worst-value computation
   };
 }
