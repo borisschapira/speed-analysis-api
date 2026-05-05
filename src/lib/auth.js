@@ -2,7 +2,7 @@ import prompts from "prompts";
 import dotenv from "dotenv";
 import { writeFileSync } from "fs";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const ENV_FILE = ".env";
 
