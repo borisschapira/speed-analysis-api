@@ -2,6 +2,7 @@ import prompts from "prompts";
 import { getMonitoringList, getMonitoringReports } from "../lib/api.js";
 import {
   METRIC_DEFINITIONS,
+  LIGHTHOUSE_GOALS,
   saveBudgets,
   getBudgetFile,
 } from "../lib/budget.js";
@@ -26,13 +27,34 @@ export function worstValue(values, higherIsBetter) {
   return higherIsBetter ? Math.min(...valid) : Math.max(...valid);
 }
 
+function computePercentile(values, p) {
+  const sorted = values
+    .filter((v) => v != null && !isNaN(v))
+    .sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const idx = Math.ceil((p / 100) * sorted.length) - 1;
+  return sorted[Math.max(0, idx)];
+}
+
+// Budget = 90th percentile for lower-is-better metrics (90% of runs at or below this)
+//        = 10th percentile for higher-is-better metrics (90% of runs at or above this)
+function computeBudget(values, higherIsBetter) {
+  return computePercentile(values, higherIsBetter ? 10 : 90);
+}
+
+function goalFor(def) {
+  const entry = LIGHTHOUSE_GOALS[def.key];
+  if (!entry) return null;
+  return def.higherIsBetter ? entry.min : entry.max;
+}
+
 export async function runBudgetSet(baseURL, accessToken, projectId) {
   const { lastDays, outputFile } = await prompts(
     [
       {
         type: "number",
         name: "lastDays",
-        message: "Number of days to compute worst values from:",
+        message: "Number of days to compute budgets from:",
         initial: 30,
         validate: (v) => v > 0 || "Must be a positive number.",
       },
@@ -55,7 +77,8 @@ export async function runBudgetSet(baseURL, accessToken, projectId) {
   const monitorings = await getMonitoringList(baseURL, accessToken);
 
   console.log(
-    `\nComputing worst values for ${monitorings.length} monitoring(s) over the last ${lastDays} day(s)...\n`,
+    `\nComputing 90th-percentile budgets for ${monitorings.length} monitoring(s)` +
+      ` over the last ${lastDays} day(s)...\n`,
   );
 
   const config = { defaults: {}, monitorings: {} };
@@ -70,11 +93,7 @@ export async function runBudgetSet(baseURL, accessToken, projectId) {
       baseURL,
       accessToken,
       m.id,
-      {
-        lastDays,
-        limit: 0,
-        error: false,
-      },
+      { lastDays, limit: 0, error: false },
     );
 
     if (!monitoringData || monitoringData.length === 0) {
@@ -99,14 +118,16 @@ export async function runBudgetSet(baseURL, accessToken, projectId) {
 
     const monitoringBudget = {};
     for (const def of METRIC_DEFINITIONS) {
-      const worst = worstValue(
+      const budget = computeBudget(
         perMonitoringValues[def.key],
         def.higherIsBetter,
       );
-      if (worst != null) {
-        monitoringBudget[def.key] = def.higherIsBetter
-          ? { min: Math.floor(worst) }
-          : { max: Math.ceil(worst) };
+      const goal = goalFor(def);
+      if (budget != null) {
+        monitoringBudget[def.key] = {
+          ...(goal != null ? { goal } : {}),
+          budget: def.higherIsBetter ? Math.floor(budget) : Math.ceil(budget),
+        };
       }
     }
 
@@ -118,17 +139,21 @@ export async function runBudgetSet(baseURL, accessToken, projectId) {
   }
 
   for (const def of METRIC_DEFINITIONS) {
-    const worst = worstValue(globalValues[def.key], def.higherIsBetter);
-    if (worst != null) {
-      config.defaults[def.key] = def.higherIsBetter
-        ? { min: Math.floor(worst) }
-        : { max: Math.ceil(worst) };
+    const budget = computeBudget(globalValues[def.key], def.higherIsBetter);
+    const goal = goalFor(def);
+    if (budget != null) {
+      config.defaults[def.key] = {
+        ...(goal != null ? { goal } : {}),
+        budget: def.higherIsBetter ? Math.floor(budget) : Math.ceil(budget),
+      };
     }
   }
 
   saveBudgets(config, outputFile);
   console.log(
-    "Review the file and tighten thresholds manually as your performance improves.\n" +
-      "Commit it to version control to make budgets a team-level contract.",
+    "Goals  → Lighthouse / Core Web Vitals standards (hardcoded).\n" +
+      "Budgets → 90th percentile of your observed data.\n" +
+      "Review and tighten budgets as performance improves.\n" +
+      "Commit to version control to make this a team-level contract.",
   );
 }

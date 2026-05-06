@@ -1,27 +1,21 @@
-import { getMonitoringList, getMonitoringLastReport } from "../lib/api.js";
+import prompts from "prompts";
+import { getMonitoringList, getMonitoringReports } from "../lib/api.js";
+import { extractMetrics } from "./budget-set.js";
 import {
   loadBudgets,
   getBudgetFile,
   getEffectiveBudget,
   checkMetric,
-  formatMetricValue,
   METRIC_DEFINITIONS,
 } from "../lib/budget.js";
 import { writeTSV } from "../lib/export.js";
 
-export function extractCurrentMetrics(lastReport) {
-  const r = lastReport.report;
-  return {
-    score: r.summary?.score,
-    lcp: r.timings?.largestContentfulPaint,
-    tbt: r.timings?.totalBlockingTime,
-    cls: r.timings?.cumulativeLayoutShift,
-    speedIndex: r.timings?.speedIndex,
-    loadTime: r.summary?.loadTime,
-    weight: r.summary?.weight != null ? r.summary.weight / 1024 : null,
-    fcp: r.timings?.firstContentfulPaint,
-  };
-}
+const onCancel = () => {
+  console.error("Aborted.");
+  process.exit(1);
+};
+
+const ICON = { success: "🟢", progress: "🟡", critical: "🔴" };
 
 export async function runBudgetCheck(
   baseURL,
@@ -39,84 +33,159 @@ export async function runBudgetCheck(
     process.exit(1);
   }
 
+  const { lastDays, complianceGoal } = await prompts(
+    [
+      {
+        type: "number",
+        name: "lastDays",
+        message: "Number of days to analyze:",
+        initial: 30,
+        validate: (v) => v > 0 || "Must be a positive number.",
+      },
+      {
+        type: "number",
+        name: "complianceGoal",
+        message: "Compliance goal (% of reports that must meet the threshold):",
+        initial: 90,
+        validate: (v) => (v > 0 && v <= 100) || "Must be between 1 and 100.",
+      },
+    ],
+    { onCancel },
+  );
+
   const monitorings = await getMonitoringList(baseURL, accessToken);
 
   console.log(
-    `\nChecking ${monitorings.length} monitoring(s) against ${budgetFile}...\n`,
+    `\nAnalyzing ${monitorings.length} monitoring(s) over the last ${lastDays} day(s)` +
+      ` (compliance goal: ${complianceGoal}%)...\n`,
   );
 
   const rows = [];
-  let totalViolations = 0;
-  let monitoringsOverBudget = 0;
+  let countCritical = 0;
+  let countProgress = 0;
 
   for (const m of monitorings) {
-    process.stdout.write(`Checking [${m.id}] ${m.name}... `);
+    process.stdout.write(`Fetching [${m.id}] ${m.name}... `);
 
-    const lastReport = await getMonitoringLastReport(
+    const { monitoringData } = await getMonitoringReports(
       baseURL,
       accessToken,
       m.id,
+      { lastDays, limit: 0, error: false },
     );
 
-    if (!lastReport?.report) {
-      process.stdout.write("skipped (no report)\n");
+    if (!monitoringData || monitoringData.length === 0) {
+      process.stdout.write("skipped (no data)\n");
       continue;
     }
 
-    const currentMetrics = extractCurrentMetrics(lastReport);
+    process.stdout.write(`${monitoringData.length} report(s)\n`);
+
     const budget = getEffectiveBudget(config, m.id);
-    const violations = [];
-    const row = { id: m.id, name: m.name, url: m.url };
+    const row = {
+      id: m.id,
+      name: m.name,
+      url: m.url,
+      reports: monitoringData.length,
+    };
+
+    const metricResults = [];
+    let monitoringHasCritical = false;
+    let monitoringHasProgress = false;
 
     for (const def of METRIC_DEFINITIONS) {
-      const value = currentMetrics[def.key];
-      const result = checkMetric(def, value, budget);
-
-      row[`${def.key}_value`] =
-        value != null ? +value.toFixed(def.decimals) : "";
-      row[`${def.key}_budget`] = budget[def.key]
-        ? ((def.higherIsBetter ? budget[def.key].min : budget[def.key].max) ??
-          "")
-        : "";
-      row[`${def.key}_pass`] =
-        result == null ? "N/A" : result.pass ? "yes" : "NO";
-
-      if (result && !result.pass) {
-        const pct = Math.abs(
-          ((value - result.limit) / result.limit) * 100,
-        ).toFixed(1);
-        const direction = def.higherIsBetter ? "-" : "+";
-        violations.push({ def, value, limit: result.limit, pct, direction });
+      const budgetEntry = budget[def.key];
+      if (!budgetEntry) {
+        row[`${def.key}_budget_pct`] = "N/A";
+        row[`${def.key}_goal_pct`] = "N/A";
+        row[`${def.key}_status`] = "N/A";
+        continue;
       }
+
+      let nSuccess = 0,
+        nProgress = 0,
+        nCritical = 0,
+        nMeasurable = 0;
+
+      for (const report of monitoringData) {
+        const value = extractMetrics(report)[def.key];
+        const result = checkMetric(def, value, budgetEntry);
+        if (result === null) continue;
+        nMeasurable++;
+        if (result.status === "success") nSuccess++;
+        else if (result.status === "progress") nProgress++;
+        else nCritical++;
+      }
+
+      if (nMeasurable === 0) {
+        row[`${def.key}_budget_pct`] = "N/A";
+        row[`${def.key}_goal_pct`] = "N/A";
+        row[`${def.key}_status`] = "N/A";
+        continue;
+      }
+
+      const budgetPct = ((nSuccess + nProgress) / nMeasurable) * 100;
+      const goalPct = (nSuccess / nMeasurable) * 100;
+
+      const status =
+        budgetPct < complianceGoal
+          ? "critical"
+          : goalPct >= complianceGoal
+            ? "success"
+            : "progress";
+
+      if (status === "critical") monitoringHasCritical = true;
+      if (status === "progress") monitoringHasProgress = true;
+
+      row[`${def.key}_budget_pct`] = budgetPct.toFixed(1);
+      row[`${def.key}_goal_pct`] = goalPct.toFixed(1);
+      row[`${def.key}_status`] = status.toUpperCase();
+
+      metricResults.push({
+        def,
+        status,
+        budgetPct,
+        goalPct,
+        nSuccess,
+        nProgress,
+        nCritical,
+        nMeasurable,
+      });
     }
 
-    if (violations.length > 0) {
-      process.stdout.write(`⚠  ${violations.length} violation(s)\n`);
-      for (const { def, value, limit, pct, direction } of violations) {
-        const valStr = formatMetricValue(def, value).padStart(12);
-        const limStr = formatMetricValue(def, limit).padStart(12);
-        console.log(
-          `    ${def.label.padEnd(14)} ${valStr}  (budget: ${limStr})  ${direction}${pct}%`,
-        );
-      }
-      totalViolations += violations.length;
-      monitoringsOverBudget++;
-    } else {
-      process.stdout.write("✓ OK\n");
-    }
+    if (monitoringHasCritical) countCritical++;
+    else if (monitoringHasProgress) countProgress++;
 
+    for (const {
+      def,
+      status,
+      budgetPct,
+      goalPct,
+      nSuccess,
+      nProgress,
+      nCritical,
+      nMeasurable,
+    } of metricResults) {
+      const bPct = `${budgetPct.toFixed(1)}%`.padStart(7);
+      const gPct = `${goalPct.toFixed(1)}%`.padStart(7);
+      console.log(
+        `  ${ICON[status]} ${def.label.padEnd(14)}` +
+          `  budget: ${bPct}  goal: ${gPct}` +
+          `  (🟢${nSuccess} 🟡${nProgress} 🔴${nCritical}/${nMeasurable})`,
+      );
+    }
+    console.log();
     rows.push(row);
   }
 
+  const countSuccess = rows.length - countCritical - countProgress;
   console.log(
-    `\n${monitoringsOverBudget} monitoring(s) over budget, ${totalViolations} total violation(s) out of ${rows.length} checked.`,
+    `Summary: 🟢 ${countSuccess} on track  ` +
+      `🟡 ${countProgress} progressing  ` +
+      `🔴 ${countCritical} critical  ` +
+      `(out of ${rows.length} analyzed)`,
   );
 
-  if (outputFile && rows.length > 0) {
-    writeTSV(outputFile, rows);
-  }
-
-  if (totalViolations > 0) {
-    process.exitCode = 1;
-  }
+  if (outputFile && rows.length > 0) writeTSV(outputFile, rows);
+  if (countCritical > 0) process.exitCode = 1;
 }
