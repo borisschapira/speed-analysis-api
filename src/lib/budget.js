@@ -78,21 +78,30 @@ export function getEffectiveBudget(config, monitoringId) {
 export function checkMetric(metric, value, budgetEntry) {
   if (value == null || !budgetEntry) return null;
 
-  const { goal, budget } = budgetEntry;
+  const threshold = budgetEntry[metric.key];
+  // If no threshold defined for this metric or no min/max present, return null
+  if (!threshold || (threshold.max == null && threshold.min == null)) return null;
 
+  const goal = threshold.goal ?? null;
+  const budget = threshold.max ?? threshold.min ?? null;
+
+  // compute status similarly to previous behavior
+  let status;
   if (metric.higherIsBetter) {
-    if (budget != null && value < budget)
-      return { status: "critical", value, goal, budget };
-    if (goal != null && value >= goal)
-      return { status: "success", value, goal, budget };
-    return { status: "progress", value, goal, budget };
+    if (budget != null && value < budget) status = "critical";
+    else if (goal != null && value >= goal) status = "success";
+    else status = "progress";
   } else {
-    if (budget != null && value > budget)
-      return { status: "critical", value, goal, budget };
-    if (goal != null && value <= goal)
-      return { status: "success", value, goal, budget };
-    return { status: "progress", value, goal, budget };
+    if (budget != null && value > budget) status = "critical";
+    else if (goal != null && value <= goal) status = "success";
+    else status = "progress";
   }
+
+  // pass boolean and limit expected by tests: limit is the threshold used for budget checking
+  const limit = metric.higherIsBetter ? threshold.min ?? null : threshold.max ?? null;
+  const pass = metric.higherIsBetter ? (limit != null ? value >= limit : true) : (limit != null ? value <= limit : true);
+
+  return { status, value, goal, budget, pass, limit };
 }
 
 export function formatMetricValue(metric, value) {

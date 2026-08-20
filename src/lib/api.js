@@ -45,6 +45,26 @@ export async function getMonitoringLastReport(
   return payload ?? null;
 }
 
+/**
+ * Fetch a full report by its reportId using the analysis/report endpoint.
+ * Returns the payload.report object when present, otherwise null.
+ */
+export async function getReportById(baseURL, accessToken, reportId) {
+  if (!reportId) return null;
+  const payload = await apiPost(
+    baseURL,
+    accessToken,
+    "/v1/speed-analysis/analysis/report",
+    {
+      reportId,
+      metricsOnly: true,
+      getUniqueIDsForTips: false,
+    },
+  );
+  // The analysis/report endpoint returns payload.report in the sample API; return payload.report for convenience
+  return payload?.report ?? null;
+}
+
 // options: { lastDays?, dateFrom?, dateTo?, limit?, error? }
 export async function getMonitoringReports(
   baseURL,
