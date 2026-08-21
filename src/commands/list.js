@@ -28,8 +28,13 @@ function extractReportIdFromLastReport(lastReport) {
   return null;
 }
 
-export async function runList(baseURL, accessToken, outputFile = null) {
-  const monitorings = await getMonitoringList(baseURL, accessToken);
+export async function runList(baseURL, accessToken, outputFile = null, nameRegex = null/*, projectId */) {
+  let monitorings = await getMonitoringList(baseURL, accessToken);
+
+  if (nameRegex) {
+    const re = new RegExp(nameRegex);
+    monitorings = monitorings.filter((m) => re.test(m.name));
+  }
 
   console.log(`Found ${monitorings.length} monitoring(s):\n`);
 

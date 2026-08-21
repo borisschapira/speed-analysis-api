@@ -127,12 +127,17 @@ async function askDateRange(label) {
   };
 }
 
-export async function runComparison(baseURL, accessToken, outputFile = null) {
+export async function runComparison(baseURL, accessToken, outputFile = null, nameRegex = null/*, projectId */) {
   console.log("\nDefine the two periods to compare:");
   const periodA = await askDateRange("A (reference)");
   const periodB = await askDateRange("B (comparison)");
 
-  const monitorings = await getMonitoringList(baseURL, accessToken);
+  let monitorings = await getMonitoringList(baseURL, accessToken);
+
+  if (nameRegex) {
+    const re = new RegExp(nameRegex);
+    monitorings = monitorings.filter((m) => re.test(m.name));
+  }
 
   console.log(
     `\nComparing ${monitorings.length} monitoring(s) between ${periodA.label} and ${periodB.label}...\n`,

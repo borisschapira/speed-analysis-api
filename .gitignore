@@ -2,3 +2,4 @@ node_modules/
 exports
 budgets
 .env
+.cli-state.json

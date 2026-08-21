@@ -84,7 +84,7 @@ function toRow(monitoring, lastReport, statistics, threshold) {
   return row;
 }
 
-export async function runRegression(baseURL, accessToken, outputFile = null) {
+export async function runRegression(baseURL, accessToken, outputFile = null, nameRegex = null/*, projectId */) {
   const { lastDays, threshold } = await prompts(
     [
       {
@@ -110,7 +110,12 @@ export async function runRegression(baseURL, accessToken, outputFile = null) {
     },
   );
 
-  const monitorings = await getMonitoringList(baseURL, accessToken);
+  let monitorings = await getMonitoringList(baseURL, accessToken);
+
+  if (nameRegex) {
+    const re = new RegExp(nameRegex);
+    monitorings = monitorings.filter((m) => re.test(m.name));
+  }
 
   console.log(
     `\nChecking ${monitorings.length} monitoring(s) against ${lastDays}-day baseline (threshold: ±${threshold}%)...\n`,

@@ -78,7 +78,7 @@ function toRow(monitoring, reportCount, statistics) {
   };
 }
 
-export async function runAverages(baseURL, accessToken, outputFile = null) {
+export async function runAverages(baseURL, accessToken, outputFile = null, nameRegex = null/*, projectId */) {
   const { lastDays } = await prompts(
     {
       type: "number",
@@ -95,7 +95,12 @@ export async function runAverages(baseURL, accessToken, outputFile = null) {
     },
   );
 
-  const monitorings = await getMonitoringList(baseURL, accessToken);
+  let monitorings = await getMonitoringList(baseURL, accessToken);
+
+  if (nameRegex) {
+    const re = new RegExp(nameRegex);
+    monitorings = monitorings.filter((m) => re.test(m.name));
+  }
 
   console.log(
     `Found ${monitorings.length} monitoring(s). Fetching averages over the last ${lastDays} day(s)...\n`,
