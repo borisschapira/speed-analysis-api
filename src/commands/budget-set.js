@@ -48,7 +48,7 @@ function goalFor(def) {
   return def.higherIsBetter ? entry.min : entry.max;
 }
 
-export async function runBudgetSet(baseURL, accessToken, projectId) {
+export async function runBudgetSet(baseURL, accessToken, nameRegex = null, projectId) {
   const { lastDays, outputFile } = await prompts(
     [
       {
@@ -74,7 +74,12 @@ export async function runBudgetSet(baseURL, accessToken, projectId) {
     },
   );
 
-  const monitorings = await getMonitoringList(baseURL, accessToken);
+  let monitorings = await getMonitoringList(baseURL, accessToken);
+
+  if (nameRegex) {
+    const re = new RegExp(nameRegex);
+    monitorings = monitorings.filter((m) => re.test(m.name));
+  }
 
   console.log(
     `\nComputing 90th-percentile budgets for ${monitorings.length} monitoring(s)` +

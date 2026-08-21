@@ -21,6 +21,7 @@ export async function runBudgetCheck(
   baseURL,
   accessToken,
   outputFile = null,
+  nameRegex = null,
   projectId,
 ) {
   const budgetFile = getBudgetFile(projectId);
@@ -53,7 +54,12 @@ export async function runBudgetCheck(
     { onCancel },
   );
 
-  const monitorings = await getMonitoringList(baseURL, accessToken);
+  let monitorings = await getMonitoringList(baseURL, accessToken);
+
+  if (nameRegex) {
+    const re = new RegExp(nameRegex);
+    monitorings = monitorings.filter((m) => re.test(m.name));
+  }
 
   console.log(
     `\nAnalyzing ${monitorings.length} monitoring(s) over the last ${lastDays} day(s)` +
