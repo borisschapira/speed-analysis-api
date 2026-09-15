@@ -5,8 +5,9 @@ A Node.js CLI tool to interact with the
 
 ![Screenshot of a terminal displaying all the options](/assets/capture.png)
 
-It provides six commands covering monitoring inspection, performance history,
-regression detection, period comparison, and performance budgets — with optional
+It provides seven commands covering monitoring inspection, performance history,
+regression detection, period comparison, tip aggregation, and performance budgets
+— with optional
 TSV export for every command.
 
 ## Prerequisites
@@ -47,13 +48,24 @@ pnpm start
 
 The CLI will guide you through a series of prompts:
 
-1. **Mode** — choose one of the six commands below
+1. **Mode** — choose one of the seven commands below
 2. **Project ID** — your numeric Contentsquare project ID (leave empty for project-level credentials)
 3. **Client ID** — masked input
 4. **Client Secret** — masked input
 5. **TSV export** — optional; if yes, prompts for a filename pre-filled with a timestamped default
 
 Press `Ctrl+C` at any prompt to abort.
+
+### Debugging API calls
+
+Set `DEBUG=verbose` to print each non-authentication API request and its parsed
+response using verbose console output:
+
+```shell
+DEBUG=verbose pnpm start
+```
+
+Authentication requests and responses are not included in this output.
 
 ## Commands
 
@@ -146,6 +158,30 @@ against its thresholds. Reports pass/fail per metric and summarises violations.
 
 **Exits with code 1** when any violation is found, making it suitable as a
 CI/CD quality gate.
+
+---
+
+### 7. Aggregate report tips
+
+Fetches successful reports from the last X days for each matching monitoring,
+loads the full report tips, and ranks recommendations by how often they occur.
+The TSV contains one row per tip and monitoring, plus a `total` row per tip.
+Tips are grouped by the stable tip ID returned by the API when available, with
+the tip name used as a fallback.
+
+```
+? What do you want to do? › Aggregate report tips
+? Number of days to analyze: 30
+```
+
+The command requests full reports because the API's `metricsOnly` option omits
+tips. Exported rows include monitoring/page context, affected-report counts and
+rates, report-level score/load/weight/request metrics, Core Web Vitals
+(LCP/FCP/TBT/CLS), and explicit tip values, savings, or technical locations
+when those fields are present in the API response. Missing API fields remain
+empty; the command does not estimate savings from recommendation text.
+`raw_tips_json` preserves the original tip payload for fields whose nesting
+varies between recommendations.
 
 ## TSV export
 

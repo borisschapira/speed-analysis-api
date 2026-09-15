@@ -7,6 +7,7 @@ import { runRegression } from "./src/commands/regression.js";
 import { runComparison } from "./src/commands/comparison.js";
 import { runBudgetSet } from "./src/commands/budget-set.js";
 import { runBudgetCheck } from "./src/commands/budget-check.js";
+import { runTips } from "./src/commands/tips.js";
 import { isoDatetime } from "./src/lib/export.js";
 
 const EXPORTS_DIR = "exports";
@@ -47,6 +48,12 @@ const COMMANDS = {
     defaultFile: "monitoring-budget",
     run: (baseURL, accessToken, outputFile, nameRegex, projectId) =>
       runBudgetCheck(baseURL, accessToken, outputFile, nameRegex, projectId),
+  },
+  tips: {
+    label: "Aggregate report tips",
+    defaultFile: "monitoring-tips",
+    run: (baseURL, accessToken, outputFile, nameRegex, projectId) =>
+      runTips(baseURL, accessToken, outputFile, nameRegex, projectId),
   },
 };
 
